@@ -18,13 +18,7 @@ node('agent-gorela') {
     def gitLastCommitMessage = "init"
     def namespace = "gorela"
     def kibanaurl = "https://staging-kibana.gorelas.com/goto/7b48edc6002cb9e3ecdb7eb4ab1e9dca"
-    String[] buildTargetServerList = [
-        "presenter", "interlocker", "admin",
-        "allocator", "admin-client", "client-logger",
-        "redoc-order-agency", "redoc-delivery-agency", "store-socket-server",
-        "rider-location-consumer", "rider-location-sender", "scheduler-server",
-        "rider-location-reader", "admin-socket-server", "data-masking-worker", "data-masking-distributer", "store-event-consumer"
-        ]
+    String[] buildTargetServerList = ["scheduler-worker-server"]
 
     try {
         scmVars = checkout scm
@@ -79,7 +73,7 @@ node('agent-gorela') {
             gitLastCommitMessage = sh(returnStdout: true, script: 'git log -1 --pretty=%B').trim()
 
             // production, staging, develop 환경 별 분기
-            if (currentBranch == "origin/master" || currentBranch == "master") {
+            if (currentBranch == "origin/main" || currentBranch == "main") {
                 dockerTag = sh(returnStdout: true, script: "git tag --sort version:refname | tail -1").trim()
                 println "master dockerTag = ${dockerTag}"
 
@@ -153,51 +147,11 @@ node('agent-gorela') {
             for (int i = 0; i < buildTargetServerList.size(); i++) {
                 def targetSvr = buildTargetServerList[i]
                 stage("${targetSvr}") {
-                    if ( targetSvr == 'admin-client' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host --build-arg NODE_ENV=${nodeEnvForClient} ./client/admin/")
+                    buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host --build-arg serverName=${targetSvr} .")
 
-                    } else if ( targetSvr == 'client-logger' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/${targetSvr}/")
-
-                    } else if ( targetSvr == 'redoc-order-agency' ) {
-                        if(namespace == "gorela-staging" || namespace == "gorela-dev") {
-                            buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/interlocker/src/public/swagger/orderAgency/")
-                        } else return
-                    } else if ( targetSvr == 'redoc-delivery-agency') {
-                        if(namespace == "gorela-staging" || namespace == "gorela-dev") {
-                            buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/interlocker/src/public/swagger/deliveryAgency/")
-                        } else return
-                    } else if ( targetSvr == 'store-event-consumer' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/ -f ./server/${targetSvr}/Dockerfile")
-
-                    } else if ( targetSvr == 'store-socket-server' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/ -f ./server/${targetSvr}/Dockerfile")
-
-                    } else if ( targetSvr == 'admin-socket-server' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/ -f ./server/${targetSvr}/Dockerfile")
-
-                    } else if ( targetSvr == 'rider-location-consumer' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/${targetSvr}/")
-
-                    } else if ( targetSvr == 'rider-location-sender' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/ -f ./server/${targetSvr}/Dockerfile")
-
-                    } else if ( targetSvr == 'rider-location-reader' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/${targetSvr}/")
-
-                    } else if ( targetSvr == 'scheduler-server' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/ -f ./server/${targetSvr}/Dockerfile")
-
-                    } else if ( targetSvr == 'data-masking-distributer' ) {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host ./server/ -f ./server/${targetSvr}/Dockerfile")
-
-                    } else {
-                        buildApp = docker.build("gorela/${targetSvr}:${dockerTag}", "--network host --build-arg serverName=${targetSvr} ./server/")
-                    }
-
-                    docker.withRegistry("https://653983231979.dkr.ecr.ap-northeast-2.amazonaws.com", "ecr:ap-northeast-2:jenkins") {
-                        buildApp.push()
-                    }
+                    // docker.withRegistry("https://653983231979.dkr.ecr.ap-northeast-2.amazonaws.com", "ecr:ap-northeast-2:jenkins") {
+                    //     buildApp.push()
+                    // }
                 }
             }
         }
@@ -301,19 +255,19 @@ node('agent-gorela') {
 }
 
 def notifySlack(text, attachments) {
-    def slackURL = 'https://hooks.slack.com/services/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' // gorela_ci_cd
-    // def slackURL = 'https://hooks.slack.com/services/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'  // shared_alert_channel
-    def jenkinsIcon = 'https://avatars.slack-edge.com/2019-05-08/628787263668_7a9ee5e84462be745c7a_48.jpg'
+    // def slackURL = 'https://hooks.slack.com/services/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' // gorela_ci_cd
+    // // def slackURL = 'https://hooks.slack.com/services/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'  // shared_alert_channel
+    // def jenkinsIcon = 'https://avatars.slack-edge.com/2019-05-08/628787263668_7a9ee5e84462be745c7a_48.jpg'
 
-    def payload = JsonOutput.toJson([text: text,
-        channel: 'gorela_ci_cd',
-        // channel: 'shared_alert_channel',
-        username: "Jenkins",
-        icon_url: jenkinsIcon,
-        attachments: attachments
-    ])
+    // def payload = JsonOutput.toJson([text: text,
+    //     channel: 'gorela_ci_cd',
+    //     // channel: 'shared_alert_channel',
+    //     username: "Jenkins",
+    //     icon_url: jenkinsIcon,
+    //     attachments: attachments
+    // ])
 
-    sh "curl -X POST --data-urlencode \'payload=${payload}\' ${slackURL}"
+    // sh "curl -X POST --data-urlencode \'payload=${payload}\' ${slackURL}"
 }
 
 def deleteCurrentBuild() {
